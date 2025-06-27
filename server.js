@@ -20,14 +20,23 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
 const userAutoWin = {};    // For per-user WIN/LOSE overrides (object: { [userId]: "win"/"lose" })
 let AUTO_WINNING = true;   // For global AUTO_WINNING mode (true = win by real movement, false = all lose)
 
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:3001',
+  'https://www.adminnovachain.link'
+];
+
 const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:3001'
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('CORS Not Allowed'));
+    }
+  },
   credentials: true,
 };
 
