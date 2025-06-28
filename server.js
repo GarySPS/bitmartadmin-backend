@@ -57,6 +57,7 @@ function requireAdminAuth(req, res, next) {
   }
 }
 
+
 // --- Admin Save Deposit Wallet Addresses (with QR upload) ---
 app.post(
   '/api/admin/deposit-addresses',
@@ -385,6 +386,24 @@ app.get('/api/admin/deposits', requireAdminAuth, async (req, res) => {
        FROM deposits ORDER BY id DESC`
     );
     // Attach the full image URL for frontend display
+    const mappedRows = result.rows.map(row => ({
+      ...row,
+      screenshot_url: row.screenshot
+        ? `http://localhost:5000/uploads/${row.screenshot}`
+        : null
+    }));
+    res.json(mappedRows);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch deposits', detail: err.message });
+  }
+});
+// ADD THIS - allows frontend to fetch deposits using /api/deposits
+app.get('/api/deposits', requireAdminAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, user_id, coin, amount, address, screenshot, status, created_at
+       FROM deposits ORDER BY id DESC`
+    );
     const mappedRows = result.rows.map(row => ({
       ...row,
       screenshot_url: row.screenshot
