@@ -209,15 +209,6 @@ app.get('/api/admin/user/:id/kyc', requireAdminAuth, async (req, res) => {
   }
 });
 
-app.post('/api/admin/set-user-win-mode', requireAdminAuth, (req, res) => {
-  const { user_id, mode } = req.body; // mode: 'win' or 'lose'
-  if (!user_id || !['win', 'lose', null].includes(mode)) {
-    return res.status(400).json({ message: 'Invalid input' });
-  }
-  if (mode === null) delete userAutoWin[user_id];
-  else userAutoWin[user_id] = mode;
-  res.json({ message: `User ${user_id} win mode set to ${mode}` });
-});
 
 app.post('/api/admin/auto-winning', requireAdminAuth, (req, res) => {
   const { enabled } = req.body;
@@ -452,22 +443,27 @@ app.get('/debug/trades', requireAdminAuth, async (req, res) => {
 // Add near your other routes
 const axios = require('axios');
 
-app.post('/api/admin/set-user-win-mode', requireAdminAuth, async (req, res) => {
-  const { user_id, mode } = req.body;
+
+// Add THIS route to your admin backend!
+app.post('/api/admin/users/:user_id/trade-mode', requireAdminAuth, async (req, res) => {
+  const { user_id } = req.params;
+  const { mode } = req.body;
   if (!user_id || !['WIN', 'LOSE', null, ""].includes(mode)) {
     return res.status(400).json({ message: 'Invalid input' });
   }
   try {
-    // Forward the request to the main backend
-    const mainRes = await axios.post(
-      `http://localhost:5000/api/admin/users/${user_id}/trade-mode`,
+    // Forward the request to main backend API (user backend)
+    const mainBackendURL = 'https://novachain-backend.onrender.com'; // <-- Set your REAL main backend URL here!
+    const axiosRes = await axios.post(
+      `${mainBackendURL}/api/admin/users/${user_id}/trade-mode`,
       { mode: mode || null }
     );
-    res.json({ success: true, ...mainRes.data });
+    res.json({ success: true, ...axiosRes.data });
   } catch (err) {
     res.status(500).json({ message: 'Failed to update user mode', detail: err.message });
   }
 });
+
 
 
 app.listen(PORT, () => {
