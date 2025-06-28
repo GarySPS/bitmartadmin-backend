@@ -382,9 +382,13 @@ app.post('/api/admin/users/:user_id/trade-mode', requireAdminAuth, async (req, r
   }
   try {
     const axiosRes = await axios.post(
-      `${MAIN_BACKEND_URL}/api/admin/users/${user_id}/trade-mode`,
-      { mode: mode || null }
-    );
+  `${MAIN_BACKEND_URL}/api/admin/users/${user_id}/trade-mode`,
+  { mode: mode || null },
+  {
+    headers: { 'x-admin-token': process.env.ADMIN_API_TOKEN }
+  }
+);
+
     res.json({ success: true, ...axiosRes.data });
   } catch (err) {
     res.status(500).json({ message: 'Failed to update user mode', detail: err.message });
