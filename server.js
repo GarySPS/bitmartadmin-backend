@@ -61,28 +61,38 @@ function requireAdminAuth(req, res, next) {
 // Proxy - in admin backend, NEVER local DB
 app.get('/api/trades', requireAdminAuth, async (req, res) => {
   try {
-    const r = await axios.get(`${MAIN_BACKEND_URL}/api/trades`);
+    const r = await axios.get(`${MAIN_BACKEND_URL}/api/trades`, {
+      headers: { 'x-admin-token': process.env.ADMIN_API_TOKEN }
+    });
     res.json(r.data);
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch trades', detail: err.message });
   }
 });
+
 app.get('/api/deposits', requireAdminAuth, async (req, res) => {
   try {
-    const r = await axios.get(`${MAIN_BACKEND_URL}/api/deposits`);
+    const r = await axios.get(`${MAIN_BACKEND_URL}/api/deposits`, {
+      headers: { 'x-admin-token': process.env.ADMIN_API_TOKEN }
+    });
     res.json(r.data);
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch deposits', detail: err.message });
   }
 });
+
 app.get('/api/withdrawals', requireAdminAuth, async (req, res) => {
   try {
-    const r = await axios.get(`${MAIN_BACKEND_URL}/api/withdrawals`);
+    const r = await axios.get(`${MAIN_BACKEND_URL}/api/withdrawals`, {
+      headers: { 'x-admin-token': process.env.ADMIN_API_TOKEN }
+    });
     res.json(r.data);
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch withdrawals', detail: err.message });
   }
 });
+
+
 
 
 // ---- NORMAL ADMIN CONTROLS (NOT PROXIED) ----
