@@ -66,9 +66,12 @@ app.get('/api/trades', requireAdminAuth, async (req, res) => {
     });
     res.json(r.data);
   } catch (err) {
+    // PRINT THE ERROR TO RENDER LOGS
+    console.error("TRADES PROXY ERROR:", err.response?.data || err.message, err.response?.status || "");
     res.status(500).json({ message: 'Failed to fetch trades', detail: err.message });
   }
 });
+
 
 app.get('/api/deposits', requireAdminAuth, async (req, res) => {
   try {
