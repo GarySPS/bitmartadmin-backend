@@ -4,6 +4,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 require('dotenv').config();
+console.log("LOADED ADMIN_PASSWORD:", process.env.ADMIN_PASSWORD);
 const pool = require('./db'); // Use your new db.js here
 const path = require('path');
 const multer = require('multer');
