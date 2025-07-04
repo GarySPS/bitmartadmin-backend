@@ -422,20 +422,6 @@ app.post('/api/admin/users/:user_id/trade-mode', requireAdminAuth, async (req, r
   }
 });
 
-const ADMINS = [
-  {
-    email: process.env.ADMIN_EMAIL || 'admin@novachain.com',
-    password: process.env.ADMIN_PASSWORD || 'SuperSecret123',
-    role: 'superadmin', // can access everything
-  },
-  {
-    email: process.env.SUPPORT_EMAIL || 'support@novachain.com',
-    password: process.env.SUPPORT_PASSWORD || 'Support123',
-    role: 'support', // cannot use deposit settings
-  },
-];
-
-
 app.listen(PORT, () => {
   console.log(`NovaChain Admin Backend running on port ${PORT}`);
 });
