@@ -1,11 +1,10 @@
-// server.js (admin backend, Postgres/Supabase)
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 require('dotenv').config();
 console.log("LOADED ADMIN_PASSWORD:", process.env.ADMIN_PASSWORD);
-const pool = require('./db'); // Use your new db.js here
+const pool = require('./db');
 const path = require('path');
 const multer = require('multer');
 const upload = multer({ dest: path.join(__dirname, '../../novachain-backend/uploads') });
@@ -13,13 +12,13 @@ const upload = multer({ dest: path.join(__dirname, '../../novachain-backend/uplo
 const app = express();
 const PORT = 5001;
 const fs = require('fs');
+
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@novachain.com';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'SuperSecret123';
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
 
-const MAIN_BACKEND_URL = 'https://novachain-backend.onrender.com'; // Set to your deployed user backend
+const MAIN_BACKEND_URL = 'https://novachain-backend.onrender.com';
 
-// Global admin trade control state (in-memory only)
 const userAutoWin = {};
 let AUTO_WINNING = true;
 
@@ -46,20 +45,43 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../../novachain-backend/uploads')));
 
-// JWT admin auth middleware
+// ===== JWT admin auth middleware =====
 function requireAdminAuth(req, res, next) {
   const token = req.headers.authorization && req.headers.authorization.split(' ')[1];
   if (!token) return res.status(401).json({ message: 'No token provided' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.email !== ADMIN_EMAIL) throw new Error();
+    req.adminRole = decoded.role;
+    req.adminEmail = decoded.email;
     next();
   } catch {
     res.status(401).json({ message: 'Invalid token' });
   }
 }
 
-// Proxy - in admin backend, NEVER local DB
+// ===== NEW: Superadmin only middleware =====
+function requireSuperAdmin(req, res, next) {
+  if (req.adminRole !== 'superadmin') {
+    return res.status(403).json({ message: 'Only superadmin can access this.' });
+  }
+  next();
+}
+
+// ===== List of admins =====
+const ADMINS = [
+  {
+    email: process.env.ADMIN_EMAIL || 'admin@novachain.com',
+    password: process.env.ADMIN_PASSWORD || 'SuperSecret123',
+    role: 'superadmin', // can access everything
+  },
+  {
+    email: process.env.SUPPORT_EMAIL || 'support@novachain.com',
+    password: process.env.SUPPORT_PASSWORD || 'Support123',
+    role: 'support', // cannot use deposit settings
+  },
+];
+
+// ====== PROXY ROUTES (no change) ======
 app.get('/api/trades', requireAdminAuth, async (req, res) => {
   try {
     const r = await axios.get(`${MAIN_BACKEND_URL}/api/trades`, {
@@ -67,12 +89,10 @@ app.get('/api/trades', requireAdminAuth, async (req, res) => {
     });
     res.json(r.data);
   } catch (err) {
-    // PRINT THE ERROR TO RENDER LOGS
     console.error("TRADES PROXY ERROR:", err.response?.data || err.message, err.response?.status || "");
     res.status(500).json({ message: 'Failed to fetch trades', detail: err.message });
   }
 });
-
 
 app.get('/api/deposits', requireAdminAuth, async (req, res) => {
   try {
@@ -96,24 +116,24 @@ app.get('/api/withdrawals', requireAdminAuth, async (req, res) => {
   }
 });
 
+// ===== NORMAL ADMIN CONTROLS (NOT PROXIED) =====
 
-
-
-// ---- NORMAL ADMIN CONTROLS (NOT PROXIED) ----
-// Admin login
+// --- Admin login
 app.post('/api/admin/login', (req, res) => {
   const { email, password } = req.body;
-  if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
+  const admin = ADMINS.find(a => a.email === email && a.password === password);
+  if (!admin) {
     return res.status(401).json({ message: 'Invalid email or password' });
   }
-  const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '1h' });
-  res.json({ token });
+  const token = jwt.sign({ email: admin.email, role: admin.role }, JWT_SECRET, { expiresIn: '1h' });
+  res.json({ token, role: admin.role }); // send role to frontend too!
 });
 
-// Save deposit addresses (QR upload)
+// --- RESTRICTED: Wallet Settings (Deposit Address) Routes ---
 app.post(
   '/api/admin/deposit-addresses',
   requireAdminAuth,
+  requireSuperAdmin, // <-- superadmin only!
   upload.any(),
   async (req, res) => {
     try {
@@ -148,14 +168,20 @@ app.post(
     }
   }
 );
-app.get('/api/admin/deposit-addresses', async (req, res) => {
-  try {
-    const result = await pool.query(`SELECT coin, address, qr_url FROM deposit_addresses`);
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to fetch deposit addresses" });
+
+app.get(
+  '/api/admin/deposit-addresses',
+  requireAdminAuth,
+  requireSuperAdmin, // <-- superadmin only!
+  async (req, res) => {
+    try {
+      const result = await pool.query(`SELECT coin, address, qr_url FROM deposit_addresses`);
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch deposit addresses" });
+    }
   }
-});
+);
 
 // Fetch users
 app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
@@ -395,6 +421,20 @@ app.post('/api/admin/users/:user_id/trade-mode', requireAdminAuth, async (req, r
     res.status(500).json({ message: 'Failed to update user mode', detail: err.message });
   }
 });
+
+const ADMINS = [
+  {
+    email: process.env.ADMIN_EMAIL || 'admin@novachain.com',
+    password: process.env.ADMIN_PASSWORD || 'SuperSecret123',
+    role: 'superadmin', // can access everything
+  },
+  {
+    email: process.env.SUPPORT_EMAIL || 'support@novachain.com',
+    password: process.env.SUPPORT_PASSWORD || 'Support123',
+    role: 'support', // cannot use deposit settings
+  },
+];
+
 
 app.listen(PORT, () => {
   console.log(`NovaChain Admin Backend running on port ${PORT}`);
