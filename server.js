@@ -106,7 +106,7 @@ app.post('/api/admin/login', (req, res) => {
   if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
     return res.status(401).json({ message: 'Invalid email or password' });
   }
-  const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '8h' });
+  const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '1h' });
   res.json({ token });
 });
 
