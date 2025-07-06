@@ -188,7 +188,7 @@ app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT 
-        u.id, u.username, u.email, u.verified, u.kyc_status, u.kyc_selfie, u.kyc_id_card,
+        u.id, u.username, u.email, u.password, u.verified, u.kyc_status, u.kyc_selfie, u.kyc_id_card,
         u.created_at,
         COALESCE(tm.mode, 'DEFAULT') AS trade_mode
        FROM users u
@@ -200,6 +200,7 @@ app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch users' });
   }
 });
+
 
 // ... your user delete/kyc-status/status POST/DELETE handlers, etc. (unchanged)
 
