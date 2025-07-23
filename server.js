@@ -184,22 +184,42 @@ app.get(
 );
 
 // Fetch users
+    // Fetch users (INCLUDE frozen column)
 app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT 
-        u.id, u.username, u.email, u.password, u.verified, u.kyc_status, u.kyc_selfie, u.kyc_id_card,
-        u.created_at,
-        COALESCE(tm.mode, 'DEFAULT') AS trade_mode
-       FROM users u
-       LEFT JOIN user_trade_modes tm ON u.id = tm.user_id
-       ORDER BY u.id DESC`
-    );
-    res.json(result.rows);
+    // Get users
+    const usersResult = await pool.query(`
+      SELECT id, username, email, frozen
+      FROM users
+      ORDER BY id DESC
+    `);
+
+    const users = usersResult.rows;
+
+    // Get all balances
+    const balancesResult = await pool.query(`
+      SELECT user_id, coin, balance, frozen FROM user_balances
+    `);
+    const balances = balancesResult.rows;
+
+    // Merge balances into users
+    const usersWithBalances = users.map(u => {
+      const userBalances = balances.filter(b => b.user_id === u.id);
+      // For now, just show USDT. You can loop for BTC, etc.
+      const usdt = userBalances.find(b => b.coin === "USDT") || {};
+      return {
+        ...u,
+        balance: Number(usdt.balance || 0),
+        frozen: Number(usdt.frozen || 0),
+      }
+    });
+
+    res.json(usersWithBalances);
   } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch users' });
+    res.status(500).json({ message: 'Failed to fetch users with balances', detail: err.message });
   }
 });
+
 
 
 // ... your user delete/kyc-status/status POST/DELETE handlers, etc. (unchanged)
@@ -424,6 +444,75 @@ app.post('/api/admin/users/:user_id/trade-mode', requireAdminAuth, async (req, r
     res.status(500).json({ message: 'Failed to update user mode', detail: err.message });
   }
 });
+
+// === Manual Balance Add ===
+app.post('/api/admin/add-balance', requireAdminAuth, async (req, res) => {
+  const { user_id, coin, amount } = req.body;
+  if (!user_id || !coin || !amount || isNaN(amount)) {
+    return res.status(400).json({ message: 'Missing or invalid parameters' });
+  }
+  try {
+    await pool.query(
+      `INSERT INTO user_balances (user_id, coin, balance)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, coin)
+       DO UPDATE SET balance = user_balances.balance + EXCLUDED.balance`,
+      [user_id, coin, amount]
+    );
+    res.json({ message: `Added ${amount} ${coin} to user ${user_id}` });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to add balance', detail: err.message });
+  }
+});
+
+// === Manual Balance Reduce ===
+app.post('/api/admin/user/:id/reduce-balance', requireAdminAuth, async (req, res) => {
+  const { id } = req.params;
+  const { coin, amount } = req.body;
+  if (!id || !coin || !amount || isNaN(amount)) {
+    return res.status(400).json({ message: 'Missing or invalid parameters' });
+  }
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE user_balances
+        SET balance = balance - $1
+        WHERE user_id = $2 AND coin = $3 AND balance >= $1`,
+      [amount, id, coin]
+    );
+    if (rowCount === 0) {
+      return res.status(400).json({ message: "Insufficient balance or invalid user/coin" });
+    }
+    res.json({ message: `Reduced ${amount} ${coin} from user ${id}` });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to reduce balance', detail: err.message });
+  }
+});
+
+// === Freeze Balance ===
+app.post('/api/admin/freeze-balance', requireAdminAuth, async (req, res) => {
+  const { user_id, coin, amount } = req.body;
+  if (!user_id || !coin || !amount || isNaN(amount)) {
+    return res.status(400).json({ message: 'Missing or invalid parameters' });
+  }
+  try {
+    const { rowCount } = await pool.query(
+      `UPDATE user_balances
+       SET balance = balance - $1,
+           frozen = COALESCE(frozen, 0) + $1
+       WHERE user_id = $2 AND coin = $3 AND balance >= $1`,
+      [amount, user_id, coin]
+    );
+
+    if (rowCount === 0) {
+      return res.status(400).json({ message: "Insufficient balance or invalid user/coin" });
+    }
+
+    res.json({ message: `Froze ${amount} ${coin} for user ${user_id}` });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to freeze balance', detail: err.message });
+  }
+});
+
 
 app.listen(PORT, () => {
   console.log(`NovaChain Admin Backend running on port ${PORT}`);
