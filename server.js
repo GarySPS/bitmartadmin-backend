@@ -26,19 +26,22 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
   'http://localhost:3001',
-  'https://www.adminnovachain.link'
+  'https://www.adminnovachain.link',
+  'https://adminnovachain.link'
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
+    // Allow REST tools without origin (Postman)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     } else {
-      return callback(new Error('CORS Not Allowed'));
+      return callback(new Error('CORS Not Allowed: ' + origin));
     }
   },
   credentials: true,
+  optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
