@@ -186,13 +186,11 @@ app.get(
   }
 );
 
-// Fetch users
-    // Fetch users (INCLUDE frozen column)
+// Fetch users (full info for admin table)
 app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
   try {
-    // Get users
     const usersResult = await pool.query(`
-      SELECT id, username, email, frozen
+      SELECT id, email, username, created_at, kyc_status, kyc_id_card, kyc_selfie, frozen
       FROM users
       ORDER BY id DESC
     `);
@@ -205,24 +203,23 @@ app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
     `);
     const balances = balancesResult.rows;
 
-    // Merge balances into users
+    // Merge balances into users (USDT only)
     const usersWithBalances = users.map(u => {
       const userBalances = balances.filter(b => b.user_id === u.id);
-      // For now, just show USDT. You can loop for BTC, etc.
       const usdt = userBalances.find(b => b.coin === "USDT") || {};
       return {
         ...u,
         balance: Number(usdt.balance || 0),
-        frozen: Number(usdt.frozen || 0),
+        frozen_balance: Number(usdt.frozen || 0), // renamed to avoid clash
       }
     });
 
     res.json(usersWithBalances);
   } catch (err) {
+    console.error("USERS ERROR:", err);
     res.status(500).json({ message: 'Failed to fetch users with balances', detail: err.message });
   }
 });
-
 
 
 // ... your user delete/kyc-status/status POST/DELETE handlers, etc. (unchanged)
