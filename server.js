@@ -191,10 +191,10 @@ app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
   try {
     // Get users (NO frozen column in users!)
     const usersResult = await pool.query(`
-      SELECT id, email, username, created_at, kyc_status, kyc_id_card, kyc_selfie
-      FROM users
-      ORDER BY id DESC
-    `);
+  SELECT id, email, username, password, created_at, kyc_status, kyc_id_card, kyc_selfie
+  FROM users
+  ORDER BY id DESC
+`);
 
     const users = usersResult.rows;
 
