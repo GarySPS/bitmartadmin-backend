@@ -189,15 +189,16 @@ app.get(
 // Fetch users (full info for admin table)
 app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
   try {
+    // Get users (NO frozen column in users!)
     const usersResult = await pool.query(`
-      SELECT id, email, username, created_at, kyc_status, kyc_id_card, kyc_selfie, frozen
+      SELECT id, email, username, created_at, kyc_status, kyc_id_card, kyc_selfie
       FROM users
       ORDER BY id DESC
     `);
 
     const users = usersResult.rows;
 
-    // Get all balances
+    // Get all balances (frozen is in user_balances!)
     const balancesResult = await pool.query(`
       SELECT user_id, coin, balance, frozen FROM user_balances
     `);
@@ -210,7 +211,7 @@ app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
       return {
         ...u,
         balance: Number(usdt.balance || 0),
-        frozen_balance: Number(usdt.frozen || 0), // renamed to avoid clash
+        frozen_balance: Number(usdt.frozen || 0), // from user_balances
       }
     });
 
@@ -221,8 +222,6 @@ app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
   }
 });
 
-
-// ... your user delete/kyc-status/status POST/DELETE handlers, etc. (unchanged)
 
 app.delete('/api/admin/user/:id', requireAdminAuth, async (req, res) => {
   const { id } = req.params;
