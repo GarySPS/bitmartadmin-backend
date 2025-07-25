@@ -222,7 +222,6 @@ app.get('/api/admin/users', requireAdminAuth, async (req, res) => {
   }
 });
 
-
 app.delete('/api/admin/user/:id', requireAdminAuth, async (req, res) => {
   const { id } = req.params;
   const client = await pool.connect();
