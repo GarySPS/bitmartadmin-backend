@@ -282,9 +282,18 @@ app.post('/api/admin/auto-winning', requireAdminAuth, (req, res) => {
   AUTO_WINNING = enabled;
   res.json({ message: `AUTO_WINNING set to ${AUTO_WINNING}` });
 });
-app.get('/api/admin/user-win-modes', requireAdminAuth, (req, res) => {
-  res.json(userAutoWin);
+// NEW - proxy to main backend!
+app.get('/api/admin/user-win-modes', requireAdminAuth, async (req, res) => {
+  try {
+    const r = await axios.get(`${MAIN_BACKEND_URL}/api/admin/user-win-modes`, {
+      headers: { 'x-admin-token': process.env.ADMIN_API_TOKEN }
+    });
+    res.json(r.data);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch user win modes', detail: err.message });
+  }
 });
+
 
 // Trade result, user status, etc.
 app.post('/api/admin/user-status', requireAdminAuth, async (req, res) => {
