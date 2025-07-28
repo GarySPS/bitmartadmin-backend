@@ -520,6 +520,20 @@ app.post('/api/admin/freeze-balance', requireAdminAuth, async (req, res) => {
   }
 });
 
+// === GET User Balances for Admin Table ===
+app.get('/api/admin/user/:id/balances', requireAdminAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT coin, balance, frozen FROM user_balances WHERE user_id = $1 ORDER BY coin ASC`,
+      [id]
+    );
+    res.json({ balances: rows });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch user balances", detail: err.message });
+  }
+});
+
 
 app.listen(PORT, () => {
   console.log(`NovaChain Admin Backend running on port ${PORT}`);
