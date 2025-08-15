@@ -257,22 +257,20 @@ app.post('/api/admin/user-kyc-status', requireAdminAuth, async (req, res) => {
     res.status(500).json({ message: "DB error" });
   }
 });
-app.get('/api/admin/user/:id/kyc', requireAdminAuth, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const { rows } = await pool.query(
-      `SELECT kyc_selfie, kyc_id_card, kyc_status FROM users WHERE id = $1`,
-      [id]
-    );
-    const row = rows[0];
-    if (!row) return res.status(404).json({ error: "User not found" });
-    row.kyc_selfie = row.kyc_selfie ? `/uploads/${row.kyc_selfie}` : null;
-    row.kyc_id_card = row.kyc_id_card ? `/uploads/${row.kyc_id_card}` : null;
-    res.json(row);
-  } catch (err) {
-    res.status(500).json({ error: "DB error" });
-  }
-});
+ app.get('/api/admin/user/:id/kyc', requireAdminAuth, async (req, res) => {
+   const { id } = req.params;
+   try {
+     const { rows } = await pool.query(
+       `SELECT kyc_selfie, kyc_id_card, kyc_status FROM users WHERE id = $1`,
+       [id]
+     );
+     if (!rows[0]) return res.status(404).json({ error: "User not found" });
+     // Return the stored (Supabase) public URLs as-is
+     res.json(rows[0]);
+   } catch (err) {
+     res.status(500).json({ error: "DB error" });
+   }
+ });
 
 app.post('/api/admin/auto-winning', requireAdminAuth, (req, res) => {
   const { enabled } = req.body;
@@ -531,6 +529,23 @@ app.get('/api/admin/user/:id/balances', requireAdminAuth, async (req, res) => {
     res.json({ balances: rows });
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch user balances", detail: err.message });
+  }
+});
+
+// --- NEW: KYC approve/reject (endpoint used by AdminKYC UI)
+app.post('/kyc/admin/status', requireAdminAuth, async (req, res) => {
+  const { user_id, status } = req.body;
+  if (!user_id || !['approved', 'rejected', 'pending'].includes(status)) {
+    return res.status(400).json({ error: "Invalid input" });
+  }
+  try {
+    await pool.query(
+      `UPDATE users SET kyc_status = $1 WHERE id = $2`,
+      [status, user_id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "DB error" });
   }
 });
 
