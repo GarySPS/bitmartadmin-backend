@@ -7,17 +7,17 @@ console.log("LOADED ADMIN_PASSWORD:", process.env.ADMIN_PASSWORD);
 const pool = require('./db');
 const path = require('path');
 const multer = require('multer');
-const upload = multer({ dest: path.join(__dirname, '../../novachain-backend/uploads') });
+const upload = multer({ dest: path.join(__dirname, '../../backend/uploads') });
 
 const app = express();
 const PORT = 5001;
 const fs = require('fs');
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@novachain.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'SuperSecret123';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@bitmart.com';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'SuperSecret123Sps260895';
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
 
-const MAIN_BACKEND_URL = 'https://novachain-backend.onrender.com';
+const MAIN_BACKEND_URL = 'https://bitmart-backend-o264.onrender.com';
 
 const userAutoWin = {};
 let AUTO_WINNING = true;
@@ -25,9 +25,7 @@ let AUTO_WINNING = true;
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
-  'http://localhost:3001',
-  'https://www.adminnovachain.link',
-  'https://adminnovachain.link'
+  'http://localhost:3001'
 ];
 
 const corsOptions = {
@@ -46,7 +44,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, '../../novachain-backend/uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '../../backend/uploads')));
 
 // ===== JWT admin auth middleware =====
 function requireAdminAuth(req, res, next) {
@@ -73,12 +71,12 @@ function requireSuperAdmin(req, res, next) {
 // ===== List of admins =====
 const ADMINS = [
   {
-    email: process.env.ADMIN_EMAIL || 'admin@novachain.com',
+    email: process.env.ADMIN_EMAIL || 'admin@bitmart.com',
     password: process.env.ADMIN_PASSWORD || 'SuperSecret123',
     role: 'superadmin', // can access everything
   },
   {
-    email: process.env.SUPPORT_EMAIL || 'support@novachain.com',
+    email: process.env.SUPPORT_EMAIL || 'support@bitmart.com',
     password: process.env.SUPPORT_PASSWORD || 'Support123',
     role: 'support', // cannot use deposit settings
   },
@@ -551,5 +549,5 @@ app.post('/kyc/admin/status', requireAdminAuth, async (req, res) => {
 
 
 app.listen(PORT, () => {
-  console.log(`NovaChain Admin Backend running on port ${PORT}`);
+  console.log(`BitMart Admin Backend running on port ${PORT}`);
 });
