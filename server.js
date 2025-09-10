@@ -25,7 +25,8 @@ let AUTO_WINNING = true;
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
-  'http://localhost:3001'
+  'http://localhost:3001',
+  'https://bitmartadmin-frontend.vercel.app'
 ];
 
 const corsOptions = {
