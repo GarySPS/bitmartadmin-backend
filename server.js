@@ -69,20 +69,6 @@ function requireSuperAdmin(req, res, next) {
   next();
 }
 
-// ===== List of admins =====
-const ADMINS = [
-  {
-    email: process.env.ADMIN_EMAIL || 'admin@bitmart.com',
-    password: process.env.ADMIN_PASSWORD || 'SuperSecret123',
-    role: 'superadmin', // can access everything
-  },
-  {
-    email: process.env.SUPPORT_EMAIL || 'support@bitmart.com',
-    password: process.env.SUPPORT_PASSWORD || 'Support123',
-    role: 'support', // cannot use deposit settings
-  },
-];
-
 // ====== PROXY ROUTES (no change) ======
 app.get('/api/trades', requireAdminAuth, async (req, res) => {
   try {
@@ -120,15 +106,60 @@ app.get('/api/withdrawals', requireAdminAuth, async (req, res) => {
 
 // ===== NORMAL ADMIN CONTROLS (NOT PROXIED) =====
 
-// --- Admin login
+// --- Admin login ---
 app.post('/api/admin/login', (req, res) => {
-  const { email, password } = req.body;
-  const admin = ADMINS.find(a => a.email === email && a.password === password);
-  if (!admin) {
-    return res.status(401).json({ message: 'Invalid email or password' });
-  }
-  const token = jwt.sign({ email: admin.email, role: admin.role }, JWT_SECRET, { expiresIn: '1h' });
-  res.json({ token, role: admin.role }); // send role to frontend too!
+  const { email, password } = req.body;
+
+  // Read admins from the JSON file
+  const adminsFilePath = path.join(__dirname, 'admins.json');
+  const admins = JSON.parse(fs.readFileSync(adminsFilePath));
+
+  const admin = admins.find(a => a.email === email && a.password === password);
+  if (!admin) {
+    return res.status(401).json({ message: 'Invalid email or password' });
+  }
+  const token = jwt.sign({ email: admin.email, role: admin.role }, JWT_SECRET, { expiresIn: '8h' });
+  res.json({ token, role: admin.role }); // send role to frontend too!
+});
+
+// --- Admin Change Password ---
+app.post('/api/admin/change-password', requireAdminAuth, (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    const adminEmail = req.adminEmail; // From JWT token
+
+    if (!newPassword || newPassword.length < 6) {
+        return res.status(400).json({ error: 'New password must be at least 6 characters.' });
+    }
+
+    const adminsFilePath = path.join(__dirname, 'admins.json');
+    let admins;
+    try {
+        admins = JSON.parse(fs.readFileSync(adminsFilePath));
+    } catch (error) {
+        return res.status(500).json({ error: 'Could not read admin accounts file.' });
+    }
+
+    const adminIndex = admins.findIndex(a => a.email === adminEmail);
+
+    if (adminIndex === -1) {
+        return res.status(404).json({ error: 'Admin account not found.' });
+    }
+
+    if (admins[adminIndex].password !== currentPassword) {
+        return res.status(400).json({ error: 'Invalid current password.' });
+    }
+
+    // Update password in the array
+    admins[adminIndex].password = newPassword;
+
+    // Write the updated array back to the file
+    try {
+        fs.writeFileSync(adminsFilePath, JSON.stringify(admins, null, 2));
+    } catch (error) {
+        return res.status(500).json({ error: 'Could not save new password.' });
+    }
+
+    res.json({ message: 'Password updated successfully.' });
 });
 
 // --- RESTRICTED: Wallet Settings (Deposit Address) Routes ---

@@ -1,0 +1,12 @@
+[
+  {
+    "email": "admin@bitmart.com",
+    "password": "Aa224466",
+    "role": "superadmin"
+  },
+  {
+    "email": "leader@bitmart.com",
+    "password": "Qq112233",
+    "role": "support"
+  }
+]
