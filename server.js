@@ -129,28 +129,31 @@ app.post('/api/admin/login', async (req, res) => {
     }
 });
 
-// --- Admin Change Password (Ultra Simple Version) ---
+// --- Admin Change Password (Final Secure Version) ---
 app.post('/api/admin/change-password', requireAdminAuth, async (req, res) => {
-    const { newPassword } = req.body; // We no longer need currentPassword
-    const adminEmail = req.adminEmail; // We get the email from the secure token
+    const { currentPassword, newPassword } = req.body;
+    const adminEmail = req.adminEmail; // Get email from the secure token
 
+    if (!currentPassword) {
+        return res.status(400).json({ error: 'Current password is required.' });
+    }
     if (!newPassword || newPassword.length < 6) {
         return res.status(400).json({ error: 'New password must be at least 6 characters.' });
     }
     
     try {
-        // Find the user by email ONLY and set the new password.
+        // This query finds the user by email and current password, then updates it.
         const result = await pool.query(
-            'UPDATE admins SET password = $1 WHERE email = $2',
-            [newPassword, adminEmail]
+            'UPDATE admins SET password = $1 WHERE email = $2 AND password = $3',
+            [newPassword, adminEmail, currentPassword]
         );
 
+        // If no rows were changed, it means the current password was wrong.
         if (result.rowCount === 0) {
-            // This should not happen if you are logged in
-            return res.status(404).json({ error: 'Admin user not found in the database.' });
+            return res.status(400).json({ error: 'Invalid current password.' });
         }
 
-        res.json({ message: 'Password has been successfully updated.' });
+        res.json({ message: 'Password updated successfully.' });
 
     } catch (error) {
         console.error('Admin password change error:', error);
