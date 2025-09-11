@@ -129,42 +129,43 @@ app.post('/api/admin/login', async (req, res) => {
     }
 });
 
-// --- Admin Change Password (Simple Version with DEBUG LOGS) ---
+// --- Admin Change Password (FINAL DEBUGGING VERSION) ---
 app.post('/api/admin/change-password', requireAdminAuth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     const adminEmail = req.adminEmail;
 
-    // --- Start of Debugging Logs ---
-    console.log("--- DEBUG: Password Change Request Received ---");
+    console.log("--- FINAL DEBUG: CHECKING PASSWORD ---");
     console.log("Email from token:", `"${adminEmail}"`);
-    console.log("Current Password from form:", `"${currentPassword}"`);
-    console.log("New Password from form:", `"${newPassword}"`);
-    // --- End of Debugging Logs ---
-
-    if (!newPassword || newPassword.length < 6) {
-        return res.status(400).json({ error: 'New password must be at least 6 characters.' });
-    }
+    console.log("Password from form:", `"${currentPassword}"`);
 
     try {
+        // Step 1: Just read the user from the database
         const result = await pool.query(
-            'UPDATE admins SET password = $1 WHERE email = $2 AND password = $3',
-            [newPassword, adminEmail, currentPassword]
+            'SELECT password FROM admins WHERE email = $1',
+            [adminEmail]
         );
 
-        // --- More Debugging Logs ---
-        console.log("Database UPDATE result.rowCount:", result.rowCount);
-        console.log("--- END DEBUG ---");
-        // --- End of Debugging Logs ---
-
-        if (result.rowCount === 0) {
-            return res.status(400).json({ error: 'Invalid current password.' });
+        if (result.rows.length === 0) {
+            console.log("DEBUG FAILURE: User not found in database.");
+            return res.status(404).json({ error: 'Admin user not found.' });
         }
 
-        res.json({ message: 'Password updated successfully.' });
+        const savedPassword = result.rows[0].password;
+        console.log("Password from database:", `"${savedPassword}"`);
+
+        // Step 2: Manually check for equality
+        if (savedPassword === currentPassword) {
+            console.log("DEBUG SUCCESS: Passwords match!");
+            // We will just return a success message for now
+            return res.json({ message: 'DEBUG SUCCESS: Passwords match.' });
+        } else {
+            console.log("DEBUG FAILURE: Passwords DO NOT match.");
+            return res.status(400).json({ error: 'DEBUG FAILURE: Passwords do not match.' });
+        }
 
     } catch (error) {
-        console.error('Admin password change error:', error);
-        res.status(500).json({ error: 'An internal server error occurred.' });
+        console.error('Admin password check error:', error);
+        return res.status(500).json({ error: 'An internal server error occurred.' });
     }
 });
 
