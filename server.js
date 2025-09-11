@@ -105,58 +105,48 @@ app.get('/api/withdrawals', requireAdminAuth, async (req, res) => {
   }
 });
 
-// --- Admin login ---
+// --- Admin login (Simple Version) ---
 app.post('/api/admin/login', async (req, res) => {
     const { email, password } = req.body;
-
     try {
-        const result = await pool.query('SELECT * FROM admins WHERE email = $1', [email]);
+        const result = await pool.query(
+            'SELECT * FROM admins WHERE email = $1 AND password = $2',
+            [email, password]
+        );
+
         if (result.rows.length === 0) {
             return res.status(401).json({ message: 'Invalid email or password' });
         }
 
         const admin = result.rows[0];
-        const isMatch = await bcrypt.compare(password, admin.password_hash);
-
-        if (!isMatch) {
-            return res.status(401).json({ message: 'Invalid email or password' });
-        }
-
         const token = jwt.sign({ email: admin.email, role: admin.role }, JWT_SECRET, { expiresIn: '8h' });
         res.json({ token, role: admin.role });
 
-    } catch (error) {
+    } catch (error)
+    {
         console.error("Admin login error:", error);
         res.status(500).json({ message: 'Server error during login' });
     }
 });
 
-// --- Admin Change Password ---
+// --- Admin Change Password (Simple Version) ---
 app.post('/api/admin/change-password', requireAdminAuth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
-    const adminEmail = req.adminEmail; // From JWT token
+    const adminEmail = req.adminEmail;
 
     if (!newPassword || newPassword.length < 6) {
         return res.status(400).json({ error: 'New password must be at least 6 characters.' });
     }
 
     try {
-        const result = await pool.query('SELECT * FROM admins WHERE email = $1', [adminEmail]);
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Admin account not found.' });
-        }
+        const result = await pool.query(
+            'UPDATE admins SET password = $1 WHERE email = $2 AND password = $3',
+            [newPassword, adminEmail, currentPassword]
+        );
 
-        const adminUser = result.rows[0];
-
-        const isMatch = await bcrypt.compare(currentPassword, adminUser.password_hash);
-        if (!isMatch) {
+        if (result.rowCount === 0) {
             return res.status(400).json({ error: 'Invalid current password.' });
         }
-
-        const salt = await bcrypt.genSalt(10);
-        const newPasswordHash = await bcrypt.hash(newPassword, salt);
-
-        await pool.query('UPDATE admins SET password_hash = $1 WHERE email = $2', [newPasswordHash, adminEmail]);
 
         res.json({ message: 'Password updated successfully.' });
 
