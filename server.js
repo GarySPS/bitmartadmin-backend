@@ -129,10 +129,17 @@ app.post('/api/admin/login', async (req, res) => {
     }
 });
 
-// --- Admin Change Password (Simple Version) ---
+// --- Admin Change Password (Simple Version with DEBUG LOGS) ---
 app.post('/api/admin/change-password', requireAdminAuth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     const adminEmail = req.adminEmail;
+
+    // --- Start of Debugging Logs ---
+    console.log("--- DEBUG: Password Change Request Received ---");
+    console.log("Email from token:", `"${adminEmail}"`);
+    console.log("Current Password from form:", `"${currentPassword}"`);
+    console.log("New Password from form:", `"${newPassword}"`);
+    // --- End of Debugging Logs ---
 
     if (!newPassword || newPassword.length < 6) {
         return res.status(400).json({ error: 'New password must be at least 6 characters.' });
@@ -143,6 +150,11 @@ app.post('/api/admin/change-password', requireAdminAuth, async (req, res) => {
             'UPDATE admins SET password = $1 WHERE email = $2 AND password = $3',
             [newPassword, adminEmail, currentPassword]
         );
+
+        // --- More Debugging Logs ---
+        console.log("Database UPDATE result.rowCount:", result.rowCount);
+        console.log("--- END DEBUG ---");
+        // --- End of Debugging Logs ---
 
         if (result.rowCount === 0) {
             return res.status(400).json({ error: 'Invalid current password.' });
