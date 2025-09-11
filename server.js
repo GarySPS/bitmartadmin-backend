@@ -162,57 +162,74 @@ app.post('/api/admin/change-password', requireAdminAuth, async (req, res) => {
 });
 
 // --- RESTRICTED: Wallet Settings (Deposit Address) Routes ---
-app.post(
-  '/api/admin/deposit-addresses',
-  requireAdminAuth,
-  requireSuperAdmin, // <-- superadmin only!
-  upload.any(),
-  async (req, res) => {
+const walletFields = [
+  { symbol: "USDT", network: "TRC20" },
+  { symbol: "USDT", network: "BEP20" },
+  { symbol: "USDT", network: "ERC20" },
+  { symbol: "BTC", network: "BTC" },
+  { symbol: "ETH", network: "ETH" },
+  { symbol: "TON", network: "TON" },
+  { symbol: "SOL", network: "SOL" },
+  { symbol: "XRP", network: "XRP" },
+];
+
+app.post('/api/admin/deposit-addresses', requireAdminAuth, requireSuperAdmin, upload.any(), async (req, res) => {
+    console.log('--- Received Deposit Settings Update ---');
+    console.log('Request Body:', req.body);
+    console.log('Request Files:', req.files);
+    console.log('------------------------------------');
+
     try {
-      const coins = ['USDT', 'BTC', 'ETH', 'TON', 'SOL', 'XRP'];
-      let updated = 0;
-      for (const coin of coins) {
-        const address = req.body[`${coin}_address`] || '';
-        let qr_url = null;
-        const qrFile = (req.files || []).find(f => f.fieldname === `${coin}_qr`);
-        if (qrFile) {
-          qr_url = `/uploads/${qrFile.filename}`;
+        let updated = 0;
+        for (const field of walletFields) {
+            const { symbol, network } = field;
+            const baseKey = `${symbol}_${network}`;
+            
+            const address = req.body[`${baseKey}_address`];
+            const qrFile = (req.files || []).find(f => f.fieldname === `${baseKey}_qr`);
+            let qr_url = null;
+
+            if (qrFile) {
+                qr_url = `/uploads/${qrFile.filename}`;
+            }
+
+            // Only proceed if an address is provided or a file is uploaded
+            if (address !== undefined || qr_url) {
+                await pool.query(
+                    `INSERT INTO deposit_addresses (coin, network, address, qr_url, updated_at)
+                     VALUES ($1, $2, $3, $4, NOW())
+                     ON CONFLICT (coin, network)
+                     DO UPDATE SET address = EXCLUDED.address, qr_url = COALESCE($4, deposit_addresses.qr_url), updated_at = NOW()`,
+                    [symbol, network, address || '', qr_url] // Use address or an empty string, and the determined qr_url
+                );
+                updated++;
+            }
         }
-        if (address || qr_url) {
-          await pool.query(
-            `
-            INSERT INTO deposit_addresses (coin, address, qr_url, updated_at)
-            VALUES ($1, $2, $3, NOW())
-            ON CONFLICT (coin)
-            DO UPDATE SET address = $2, qr_url = COALESCE($3, deposit_addresses.qr_url), updated_at = NOW()
-            `,
-            [coin, address, qr_url]
-          );
-          updated++;
+
+        if (updated === 0) {
+            return res.status(400).json({ success: false, message: "No new address or QR data was provided." });
         }
-      }
-      if (!updated) {
-        return res.status(400).json({ success: false, message: "No address or QR uploaded" });
-      }
-      res.json({ success: true, message: "Deposit wallet settings updated" });
+
+        res.json({ success: true, message: "Deposit wallet settings updated successfully!" });
+
     } catch (err) {
-      res.status(500).json({ success: false, message: "Failed to save deposit settings", detail: err.message });
+        console.error("DEPOSIT SETTINGS SAVE ERROR:", err);
+        res.status(500).json({ success: false, message: "Failed to save deposit settings", detail: err.message });
     }
-  }
-);
+});
 
 app.get(
-  '/api/admin/deposit-addresses',
-  requireAdminAuth,
-  requireSuperAdmin, // <-- superadmin only!
-  async (req, res) => {
-    try {
-      const result = await pool.query(`SELECT coin, address, qr_url FROM deposit_addresses`);
-      res.json(result.rows);
-    } catch (err) {
-      res.status(500).json({ message: "Failed to fetch deposit addresses" });
-    }
-  }
+  '/api/admin/deposit-addresses',
+  requireAdminAuth,
+  requireSuperAdmin,
+  async (req, res) => {
+    try {
+      const result = await pool.query(`SELECT coin, network, address, qr_url FROM deposit_addresses`);
+      res.json(result.rows);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch deposit addresses" });
+    }
+  }
 );
 
 // Fetch users (full info for admin table)
