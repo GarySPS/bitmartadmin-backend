@@ -8,6 +8,7 @@ const pool = require('./db');
 const path = require('path');
 const multer = require('multer');
 const upload = multer({ dest: path.join(__dirname, '../../backend/uploads') });
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const PORT = 5001;
@@ -104,26 +105,34 @@ app.get('/api/withdrawals', requireAdminAuth, async (req, res) => {
   }
 });
 
-// ===== NORMAL ADMIN CONTROLS (NOT PROXIED) =====
-
 // --- Admin login ---
-app.post('/api/admin/login', (req, res) => {
-  const { email, password } = req.body;
+app.post('/api/admin/login', async (req, res) => {
+    const { email, password } = req.body;
 
-  // Read admins from the JSON file
-  const adminsFilePath = path.join(__dirname, 'admins.json');
-  const admins = JSON.parse(fs.readFileSync(adminsFilePath));
+    try {
+        const result = await pool.query('SELECT * FROM admins WHERE email = $1', [email]);
+        if (result.rows.length === 0) {
+            return res.status(401).json({ message: 'Invalid email or password' });
+        }
 
-  const admin = admins.find(a => a.email === email && a.password === password);
-  if (!admin) {
-    return res.status(401).json({ message: 'Invalid email or password' });
-  }
-  const token = jwt.sign({ email: admin.email, role: admin.role }, JWT_SECRET, { expiresIn: '8h' });
-  res.json({ token, role: admin.role }); // send role to frontend too!
+        const admin = result.rows[0];
+        const isMatch = await bcrypt.compare(password, admin.password_hash);
+
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Invalid email or password' });
+        }
+
+        const token = jwt.sign({ email: admin.email, role: admin.role }, JWT_SECRET, { expiresIn: '8h' });
+        res.json({ token, role: admin.role });
+
+    } catch (error) {
+        console.error("Admin login error:", error);
+        res.status(500).json({ message: 'Server error during login' });
+    }
 });
 
 // --- Admin Change Password ---
-app.post('/api/admin/change-password', requireAdminAuth, (req, res) => {
+app.post('/api/admin/change-password', requireAdminAuth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     const adminEmail = req.adminEmail; // From JWT token
 
@@ -131,35 +140,30 @@ app.post('/api/admin/change-password', requireAdminAuth, (req, res) => {
         return res.status(400).json({ error: 'New password must be at least 6 characters.' });
     }
 
-    const adminsFilePath = path.join(__dirname, 'admins.json');
-    let admins;
     try {
-        admins = JSON.parse(fs.readFileSync(adminsFilePath));
+        const result = await pool.query('SELECT * FROM admins WHERE email = $1', [adminEmail]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Admin account not found.' });
+        }
+
+        const adminUser = result.rows[0];
+
+        const isMatch = await bcrypt.compare(currentPassword, adminUser.password_hash);
+        if (!isMatch) {
+            return res.status(400).json({ error: 'Invalid current password.' });
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const newPasswordHash = await bcrypt.hash(newPassword, salt);
+
+        await pool.query('UPDATE admins SET password_hash = $1 WHERE email = $2', [newPasswordHash, adminEmail]);
+
+        res.json({ message: 'Password updated successfully.' });
+
     } catch (error) {
-        return res.status(500).json({ error: 'Could not read admin accounts file.' });
+        console.error('Admin password change error:', error);
+        res.status(500).json({ error: 'An internal server error occurred.' });
     }
-
-    const adminIndex = admins.findIndex(a => a.email === adminEmail);
-
-    if (adminIndex === -1) {
-        return res.status(404).json({ error: 'Admin account not found.' });
-    }
-
-    if (admins[adminIndex].password !== currentPassword) {
-        return res.status(400).json({ error: 'Invalid current password.' });
-    }
-
-    // Update password in the array
-    admins[adminIndex].password = newPassword;
-
-    // Write the updated array back to the file
-    try {
-        fs.writeFileSync(adminsFilePath, JSON.stringify(admins, null, 2));
-    } catch (error) {
-        return res.status(500).json({ error: 'Could not save new password.' });
-    }
-
-    res.json({ message: 'Password updated successfully.' });
 });
 
 // --- RESTRICTED: Wallet Settings (Deposit Address) Routes ---
