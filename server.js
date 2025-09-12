@@ -164,7 +164,7 @@ app.post('/api/admin/change-password', requireAdminAuth, async (req, res) => {
 // --- RESTRICTED: Wallet Settings (Deposit Address) Routes ---
 const walletFields = [
   { symbol: "USDT", network: "TRC20" },
-  { symbol: "USDT", network: "BEP20" },
+  { symbol: "USDT", network: "USDC ETH" },
   { symbol: "USDT", network: "ERC20" },
   { symbol: "BTC", network: "BTC" },
   { symbol: "ETH", network: "ETH" },
