@@ -1,40 +1,55 @@
+//adminbackend>server.js
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
-require('dotenv').config();
-console.log("LOADED ADMIN_PASSWORD:", process.env.ADMIN_PASSWORD);
-const pool = require('./db');
+const fs = require('fs'); // Make sure fs is imported at the top
 const path = require('path');
 const multer = require('multer');
-const upload = multer({ dest: path.join(__dirname, '../../backend/uploads') });
+const pool = require('./db');
 const bcrypt = require('bcryptjs');
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
 
 const app = express();
 const PORT = 5001;
-const fs = require('fs');
 
+// ==========================================
+// 1. SETUP SUPABASE (Replaces Local Storage)
+// ==========================================
+
+// Use the Supabase keys you already have
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://epwhsyfcppenaxhrhfpy.supabase.co";
+// **IMPORTANT**: Get this from your Supabase Dashboard (Settings > API > service_role)
+const SUPABASE_KEY = process.env.SUPABASE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVwd2hzeWZjcHBlbmF4aHJoZnB5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NzQxNjUyOSwiZXhwIjoyMDcyOTkyNTI5fQ.6qzBXe3IcdYF8FKSa83byRyydFImR0zmcm2JZnJA1hw";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Configure Multer to use Memory Storage (Don't save to disk)
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
+// ... (Keep your existing constants like ADMIN_EMAIL, JWT_SECRET, etc.) ...
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@bitmart.com';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'SuperSecret123Sps260895';
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
-
 const MAIN_BACKEND_URL = 'https://bitmart-backend-o264.onrender.com';
-
-const userAutoWin = {};
 let AUTO_WINNING = true;
 
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
   'http://localhost:3001',
-  'https://bitmartadmin-frontend.vercel.app'
+  'https://bitmartadmin-frontend.vercel.app',
+  'https://bitmart-frontend.vercel.app',
+  'https://www.bitmart.top',
+  'https://bitmart.top'
 ];
 
+// ... (Keep your CORS options as they are) ...
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow REST tools without origin (Postman)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
       return callback(null, true);
     } else {
       return callback(new Error('CORS Not Allowed: ' + origin));
@@ -46,7 +61,6 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, '../../backend/uploads')));
 
 // ===== JWT admin auth middleware =====
 function requireAdminAuth(req, res, next) {
@@ -168,16 +182,14 @@ const walletFields = [
   { symbol: "USDT", network: "ERC20" },
   { symbol: "BTC", network: "BTC" },
   { symbol: "ETH", network: "ETH" },
-  { symbol: "TON", network: "TON" },
+  { symbol: "TON", network: "TON" },
+  { symbol: "USDC", network: "USDC (erc)" },
   { symbol: "SOL", network: "SOL" },
   { symbol: "XRP", network: "XRP" },
 ];
 
 app.post('/api/admin/deposit-addresses', requireAdminAuth, requireSuperAdmin, upload.any(), async (req, res) => {
-    console.log('--- Received Deposit Settings Update ---');
-    console.log('Request Body:', req.body);
-    console.log('Request Files:', req.files);
-    console.log('------------------------------------');
+    console.log('--- Received Deposit Settings Update (Using Supabase) ---');
 
     try {
         let updated = 0;
@@ -186,21 +198,46 @@ app.post('/api/admin/deposit-addresses', requireAdminAuth, requireSuperAdmin, up
             const baseKey = `${symbol}_${network}`;
             
             const address = req.body[`${baseKey}_address`];
+            // Find the file in memory
             const qrFile = (req.files || []).find(f => f.fieldname === `${baseKey}_qr`);
             let qr_url = null;
 
             if (qrFile) {
-                qr_url = `/uploads/${qrFile.filename}`;
+                // 1. Create a unique file name
+                const fileExt = qrFile.originalname.split('.').pop();
+                const fileName = `admin-qr-${symbol}-${network}-${Date.now()}.${fileExt}`;
+                const filePath = `admin-qrs/${fileName}`; // Save in a folder named 'admin-qrs'
+
+                // 2. Upload to Supabase Storage
+                const { data, error } = await supabase.storage
+                    .from('deposit') // Use the 'deposit' bucket
+                    .upload(filePath, qrFile.buffer, { // Upload from memory buffer
+                        contentType: qrFile.mimetype,
+                        upsert: true 
+                    });
+
+                if (error) {
+                    console.error("Supabase upload error:", error);
+                    throw error; // Stop if upload fails
+                }
+
+                // 3. Get the Public URL
+                const { data: publicUrlData } = supabase.storage
+                    .from('deposit')
+                    .getPublicUrl(filePath);
+                
+                qr_url = publicUrlData.publicUrl;
+                console.log(`Uploaded ${fileName} to Supabase. URL: ${qr_url}`);
             }
 
-            // Only proceed if an address is provided or a file is uploaded
+            // 4. Save the Address and new Supabase URL to database
             if (address !== undefined || qr_url) {
                 await pool.query(
                     `INSERT INTO deposit_addresses (coin, network, address, qr_url, updated_at)
                      VALUES ($1, $2, $3, $4, NOW())
                      ON CONFLICT (coin, network)
                      DO UPDATE SET address = EXCLUDED.address, qr_url = COALESCE($4, deposit_addresses.qr_url), updated_at = NOW()`,
-                    [symbol, network, address || '', qr_url] // Use address or an empty string, and the determined qr_url
+                    [symbol, network, address || '', qr_url]
                 );
                 updated++;
             }
