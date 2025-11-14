@@ -448,29 +448,50 @@ app.post('/api/admin/deposits/:id/deny', requireAdminAuth, async (req, res) => {
     res.status(500).json({ message: 'Failed to deny deposit', detail: err.message });
   }
 });
+
 app.post('/api/admin/withdrawals/:id/approve', requireAdminAuth, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const { rows } = await pool.query(
-      'SELECT user_id, amount, coin FROM withdrawals WHERE id = $1',
-      [id]
-    );
-    if (rows.length === 0) return res.status(404).json({ message: 'Withdrawal not found' });
-    const wd = rows[0];
-    await pool.query(
-      'UPDATE withdrawals SET status = $1 WHERE id = $2',
-      ['approved', id]
-    );
-    await pool.query(
-      `UPDATE user_balances
-       SET balance = balance - $1
-       WHERE user_id = $2 AND coin = $3`,
-      [wd.amount, wd.user_id, wd.coin]
-    );
-    res.json({ message: `Withdrawal #${id} approved and user balance reduced.` });
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to approve withdrawal', detail: err.message });
-  }
+  const { id } = req.params;
+  try {
+    const { rows } = await pool.query(
+      'SELECT user_id, amount, coin FROM withdrawals WHERE id = $1',
+      [id]
+    );
+    if (rows.length === 0) return res.status(404).json({ message: 'Withdrawal not found' });
+    const wd = rows[0]; // The coin here will be 'USDC'
+
+    // === START FIX ===
+    // If the withdrawal coin is 'USDC', we change it to 'USDT'
+    // so that we reduce the user's USDT balance.
+    let coinToReduce = wd.coin;
+    if (wd.coin === 'USDC') {
+      coinToReduce = 'USDT';
+    }
+    // === END FIX ===
+
+    await pool.query(
+      'UPDATE withdrawals SET status = $1 WHERE id = $2',
+      ['approved', id]
+    );
+    
+    // We use the new 'coinToReduce' variable here
+    const { rowCount } = await pool.query(
+      `UPDATE user_balances
+       SET balance = balance - $1
+       WHERE user_id = $2 AND coin = $3`,
+      [wd.amount, wd.user_id, coinToReduce] 
+    );
+
+    if (rowCount === 0) {
+      // This means the user did not have enough USDT, so we fail the approval
+      await pool.query('UPDATE withdrawals SET status = $1 WHERE id = $2', ['pending', id]); // Revert status
+      return res.status(400).json({ message: `Failed: User has insufficient ${coinToReduce} balance.` });
+    }
+
+    res.json({ message: `Withdrawal #${id} approved. User's ${coinToReduce} balance was reduced.` });
+  } catch (err) {
+    console.error("Withdrawal approve error:", err);
+    res.status(500).json({ message: 'Failed to approve withdrawal', detail: err.message });
+  }
 });
 app.post('/api/admin/withdrawals/:id/deny', requireAdminAuth, async (req, res) => {
   const { id } = req.params;
