@@ -408,7 +408,7 @@ app.post('/api/admin/update-trade', requireAdminAuth, async (req, res) => {
   }
 });
 
-// Approve/deny deposit/withdrawal (DO NOT change these - keep local DB logic)
+// Approve Deposit & Log History
 app.post('/api/admin/deposits/:id/approve', requireAdminAuth, async (req, res) => {
   const { id } = req.params;
   try {
@@ -418,21 +418,40 @@ app.post('/api/admin/deposits/:id/approve', requireAdminAuth, async (req, res) =
     );
     if (rows.length === 0) return res.status(404).json({ message: 'Deposit not found' });
     const deposit = rows[0];
+    
+    // 1. Update Status
     await pool.query(
       'UPDATE deposits SET status = $1 WHERE id = $2',
       ['approved', id]
     );
+
+    // 2. Add Balance
     await pool.query(
-      `
-        INSERT INTO user_balances (user_id, coin, balance)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (user_id, coin)
-        DO UPDATE SET balance = user_balances.balance + EXCLUDED.balance
-      `,
+      `INSERT INTO user_balances (user_id, coin, balance)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, coin)
+       DO UPDATE SET balance = user_balances.balance + EXCLUDED.balance`,
       [deposit.user_id, deposit.coin, deposit.amount]
     );
-    res.json({ message: `Deposit #${id} approved and user_balances updated.` });
+
+    // 3. NEW: Insert into Balance History (So user sees it in history tab)
+    // Fetch new balance first
+    const balRes = await pool.query(
+      'SELECT balance FROM user_balances WHERE user_id = $1 AND coin = $2',
+      [deposit.user_id, deposit.coin]
+    );
+    const newBalance = balRes.rows[0] ? balRes.rows[0].balance : 0;
+    const price_usd = (deposit.coin === 'USDT' || deposit.coin === 'USDC') ? 1 : 0; // Simplified price logic
+
+    await pool.query(
+      `INSERT INTO balance_history (user_id, coin, balance, price_usd, timestamp)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [deposit.user_id, deposit.coin, newBalance, price_usd]
+    );
+
+    res.json({ message: `Deposit #${id} approved and balance history updated.` });
   } catch (err) {
+    console.error("Deposit approve error:", err);
     res.status(500).json({ message: 'Failed to approve deposit', detail: err.message });
   }
 });
@@ -449,49 +468,62 @@ app.post('/api/admin/deposits/:id/deny', requireAdminAuth, async (req, res) => {
   }
 });
 
+// Approve Withdrawal & Log History
 app.post('/api/admin/withdrawals/:id/approve', requireAdminAuth, async (req, res) => {
-  const { id } = req.params;
-  try {
-    const { rows } = await pool.query(
-      'SELECT user_id, amount, coin FROM withdrawals WHERE id = $1',
-      [id]
-    );
-    if (rows.length === 0) return res.status(404).json({ message: 'Withdrawal not found' });
-    const wd = rows[0]; // The coin here will be 'USDC'
+  const { id } = req.params;
+  try {
+    const { rows } = await pool.query(
+      'SELECT user_id, amount, coin FROM withdrawals WHERE id = $1',
+      [id]
+    );
+    if (rows.length === 0) return res.status(404).json({ message: 'Withdrawal not found' });
+    const wd = rows[0]; 
 
-    // === START FIX ===
-    // If the withdrawal coin is 'USDC', we change it to 'USDT'
-    // so that we reduce the user's USDT balance.
+    // Logic to handle USDC withdrawals as USDT deductions
     let coinToReduce = wd.coin;
     if (wd.coin === 'USDC') {
       coinToReduce = 'USDT';
     }
-    // === END FIX ===
 
-    await pool.query(
-      'UPDATE withdrawals SET status = $1 WHERE id = $2',
-      ['approved', id]
-    );
-    
-    // We use the new 'coinToReduce' variable here
+    // 1. Update Status
+    await pool.query(
+      'UPDATE withdrawals SET status = $1 WHERE id = $2',
+      ['approved', id]
+    );
+    
+    // 2. Reduce Balance
     const { rowCount } = await pool.query(
-      `UPDATE user_balances
-       SET balance = balance - $1
-       WHERE user_id = $2 AND coin = $3`,
-      [wd.amount, wd.user_id, coinToReduce] 
-    );
+      `UPDATE user_balances
+       SET balance = balance - $1
+       WHERE user_id = $2 AND coin = $3`,
+      [wd.amount, wd.user_id, coinToReduce] 
+    );
 
     if (rowCount === 0) {
-      // This means the user did not have enough USDT, so we fail the approval
-      await pool.query('UPDATE withdrawals SET status = $1 WHERE id = $2', ['pending', id]); // Revert status
+      // If insufficient funds, revert status to pending
+      await pool.query('UPDATE withdrawals SET status = $1 WHERE id = $2', ['pending', id]); 
       return res.status(400).json({ message: `Failed: User has insufficient ${coinToReduce} balance.` });
     }
 
-    res.json({ message: `Withdrawal #${id} approved. User's ${coinToReduce} balance was reduced.` });
-  } catch (err) {
+    // 3. NEW: Insert into Balance History
+    const balRes = await pool.query(
+      'SELECT balance FROM user_balances WHERE user_id = $1 AND coin = $2',
+      [wd.user_id, coinToReduce]
+    );
+    const newBalance = balRes.rows[0] ? balRes.rows[0].balance : 0;
+    const price_usd = (coinToReduce === 'USDT' || coinToReduce === 'USDC') ? 1 : 0;
+
+    await pool.query(
+      `INSERT INTO balance_history (user_id, coin, balance, price_usd, timestamp)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [wd.user_id, coinToReduce, newBalance, price_usd]
+    );
+
+    res.json({ message: `Withdrawal #${id} approved. User's ${coinToReduce} balance reduced and history updated.` });
+  } catch (err) {
     console.error("Withdrawal approve error:", err);
-    res.status(500).json({ message: 'Failed to approve withdrawal', detail: err.message });
-  }
+    res.status(500).json({ message: 'Failed to approve withdrawal', detail: err.message });
+  }
 });
 app.post('/api/admin/withdrawals/:id/deny', requireAdminAuth, async (req, res) => {
   const { id } = req.params;
